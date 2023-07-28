@@ -1,0 +1,170 @@
+---
+title: "make_graph_notes"
+author: "Mutahi"
+date: "2023-07-23"
+output: 
+  html_document: 
+    toc: yes
+runtime: shiny
+---
+
+# Ideas
+
+I should also include the following
+- append a popularity score to each person
+- create a simple connection network based on communities and clustering, with more popular people having denser ego-centric networks but with every single person having a network
+- make sure the distribution of degrees makes sense, in addition and relation to the distribution of popularity
+
+# Introduction
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("make_graph.R")
+library(DT)
+```
+
+The script `make_graph.R` holds the functions for creating random graphs, as well as doing CRUD on various voting graphs (we want to be able to store them over time when we find particularly nice ones).
+
+This RMarkdown document is an interactive environment provided to explain and evaluate the coding choices in make_graph.\
+It is executable.\
+This is a starting point for writing useful tests.\
+
+## Overview of the Logic
+
+Okay, so what we want to do is to be able to have a function we can run with some parameters which will give us a nice random graph that looks like it makes sense in terms of how a real world population of people might form.
+
+Here is the model I'm going to use to create the random graph:
+
+-   So we start with multiple overlapping communities; each person can be a member of multiple communities
+-   Within each community, we have a random distribution of trustworthiness according to some distribution (say a Pareto)
+-   Each person then votes for someone within their community - someone they know, based on trustworthiness
+-   And then, from the edge-list, we construct the graph
+
+Think about it from your perspective.\
+Each person knows a bunch of different people - that's your community (ego-centric network in graph theory parlance.)\
+Then within that network you know who is the most trustworthy, so you vote for that person.\
+Communities really do overlap: you know someone from your high school, but *her* community includes people who are not in yours.\
+Real populations are built on overlapping communities.\
+
+That means we need the following functions:
+
+-   `make_population`: generates a list of people with various trustworthiness scores, distributed according to a Pareto distribution
+-   `make_communities`: takes a population and returns a set of realistic communities as undirected graphs, with checks on the graph structure(s) as a whole
+-   `vote`: for each person, let them vote for one of the n most trustworthy people they know, turning the graph into a directed graph but validating the same basic structure
+-   `poll`: take the directed graphs of votes, clean it up and return several summary statistics, tables and charts explaining who voted for whom - for evaluation of the program.
+
+# Design
+
+## Design of Modules
+
+No need for any special objects or classes just yet.
+
+## Design of Functions
+
+### `make_population`
+
+**Inputs** We need `pop_size`, the number of people in the population\
+We should allow the user to change the `pareto_shape` parameter of the Pareto distribution, with a default of `log(5,4)`.\
+We should allow the user to set a `seed` for reproducibility.\
+
+**Outputs** We want a dataframe with the following columns: - `id`: the name of the person - `trustworthiness`: a numerical score from 0 to 1 with a Pareto distribution
+
+**Steps**
+
+First, we need to create a random vector with n names:
+
+-   Get the triple cross product of the letter of the alphabet
+-   Sample without replacement up to size n
+
+Then, we need to create a vector of trustworthiness scores using `EnvStats::Pareto` with shape parameter `log(5,4)` and append.
+
+Then, we combine the two columns into a tibble.
+
+**Checks**
+
+-   `n` has to be less than 26\^3, for convenience
+
+**Notes**
+
+*Use of the Pareto Distribution*\
+We get the Pareto distribution from the package `{EnvStats}`.\
+The value of the Pareto distribution is that it means that there will be only a few people who are very reliable, and most people are not.\
+Let us understand the concept of 'trust' by making a direct analogy to Wealth:
+
+-   Someone is trustworthy if you would borrow them money (trust)
+-   Assume everybody has an equal amount of money (trust)
+-   We are saying that there are a handful of exceptionally trustworthy individuals in the population
+-   If we were to borrow money based on true trustworthiness, these people should end up with the majority of the money
+-   Hence the Pareto distribution
+
+Note that I'm not claiming *actual* wealth is distributed by the Pareto distribution because rich people are trustworthy. I just like the distribution.
+
+The code below simulates creating many, many populations of size 1000 using the Pareto distribution with shape parameter `log(5, base = 4)`. We calculate what percentage of the trust/wealth is held by the top 20% of people in the population. The simulation is random, so the numbers vary from run to run. We plot the distribution of this value, to understand how `make_population` will perform on average.
+
+```{r pareto_law, echo=TRUE}
+check_pareto_law <- function(){
+  population_size = 1000
+  min_val = 1
+  eighty_twenty_constant <- log(5,4)
+  x <- EnvStats::rpareto(n = population_size, 
+                         location = min_val, 
+                         shape = eighty_twenty_constant)
+  
+  ind_top_20_people <- x > quantile(x, 0.75) #indexes the top 20% of people
+  total_trust_of_the_top_20 <- sum(x[ind_top_20_people]) / sum(x)
+  
+  return(total_trust_of_the_top_20)  
+}
+
+shares_of_trust_by_top_20 <- replicate(100, check_pareto_law())
+plot(density(shares_of_trust_by_top_20), main = "Share of population trust by the top 20% of most trustworthy people.", xlab = "Percentile of Trustworthiness", ylab = "Density")
+```
+
+The graph answers the question: how concentrated is the trust in `make_population`. It shows that `make_population` will generally allocate between 60% to 90% of the trust to the top 20% of the population.
+
+**Example**
+
+```{r}
+datatable(make_population())
+```
+
+------------------------------------------------------------------------
+
+You can embed Shiny inputs and outputs in your document. Outputs are automatically updated whenever inputs change. This demonstrates how a standard R plot can be made interactive by wrapping it in the Shiny `renderPlot` function. The `selectInput` and `sliderInput` functions create the input widgets used to drive the plot.
+
+```{r eruptions, echo=FALSE}
+inputPanel(
+  selectInput("n_breaks", label = "Number of bins:",
+              choices = c(10, 20, 35, 50), selected = 20),
+  
+  sliderInput("bw_adjust", label = "Bandwidth adjustment:",
+              min = 0.2, max = 2, value = 1, step = 0.2)
+)
+
+renderPlot({
+  hist(faithful$eruptions, probability = TRUE, breaks = as.numeric(input$n_breaks),
+       xlab = "Duration (minutes)", main = "Geyser eruption duration")
+  
+  dens <- density(faithful$eruptions, adjust = input$bw_adjust)
+  lines(dens, col = "blue")
+})
+```
+
+## Embedded Application
+
+It's also possible to embed an entire Shiny application within an R Markdown document using the `shinyAppDir` function. This example embeds a Shiny application located in another directory:
+
+```{r tabsets, echo=FALSE}
+shinyAppDir(
+  system.file("examples/06_tabsets", package = "shiny"),
+  options = list(
+    width = "100%", height = 550
+  )
+)
+```
+
+Note the use of the `height` parameter to determine how much vertical space the embedded application should occupy.
+
+You can also use the `shinyApp` function to define an application inline rather then in an external directory.
+
+In all of R code chunks above the `echo = FALSE` attribute is used. This is to prevent the R code within the chunk from rendering in the document alongside the Shiny components.
