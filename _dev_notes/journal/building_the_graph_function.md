@@ -3,6 +3,9 @@ Problem: Building the Graph Constructor Module
 Date: 20230728
 ---
 
+# First Attempt
+----
+
 # Conceptualising
 
 Okay so I want to create a function which is actually going to make the graph object.
@@ -41,9 +44,28 @@ So igraph includes quite a few functions for graph construction based on a strat
 
 
 
-# Ideating
+# Ideating & Prototyping
 
 Check out `sna`, `igraph` and `tidygraph` documentation for ideas about building realistic graphs. For graph plotting and descriptive analytics: <https://www.r-bloggers.com/2010/04/social-network-analysis-using-r-and-gephis/>
+
+## Research Notes
+
+### The Small World Model
+I'm choosing this as my starting model.
+
+From [wikipedia](https://en.wikipedia.org/wiki/Small-world_network):
+
+> A small-world network is a mathematical graph in which most nodes are not neighbors of one another, but the neighbors of any given node are likely to be neighbors of each other.
+
+Seems to have the nice properties of what I want in a social graph. Also see [this](https://en.wikipedia.org/wiki/Watts–Strogatz_model).
+
+## Further Research To Do / Questions
+
+### The Graph Model
+
+Some questions:
+* What do the parameters of the Watts-Strogatz model in `igraph` actually mean?
+
 
 # Scaffolding and TDD
 
@@ -60,6 +82,10 @@ Check out `sna`, `igraph` and `tidygraph` documentation for ideas about building
 ## Functions: Requirements, Design and Tests
 
 ### `make_graph`
+
+#### Rough Example
+
+Just call `igraph::smallworld` with parameters matched to the population df and return that.
 
 #### Requirements
 This function will house the actual graph generation.
@@ -109,3 +135,9 @@ We could have parameters that affect all of the following:
 -   Character judgements - given some true parameter T for trustworthiness, how good is a particular person at estimating T with *t*. What does the distribution of the quality of judgements look like?
 -   Are people more inclined to trust people they know well or strangers?
 -   In practise, people might forget who the most trustworthy person is (and choose the wrong person). It would be nice to sample from the top 3 equally.
+
+# Second Attempt
+-----
+
+Okay, there is just too much to do and it's overwhelming.
+Let's start with a simple graph and get the scaffolding in-place first.
